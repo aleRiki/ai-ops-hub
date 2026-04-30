@@ -1,0 +1,73 @@
+# infra/docker/docker-compose.dev.yml
+# Levanta toda la infraestructura local para la Fase 1
+# Uso: docker compose -f infra/docker/docker-compose.dev.yml up -d
+
+version: '3.9'
+
+services:
+  # ── PostgreSQL 16 con pgvector ──────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: aiops-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: aiops_auth
+    ports:
+      - '5432:5432'
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis 7 ──────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: aiops-redis
+    restart: unless-stopped
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── RabbitMQ 3.13 (para Fase 3, pero mejor tenerlo desde el principio)
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: aiops-rabbitmq
+    restart: unless-stopped
+    ports:
+      - '5672:5672'     # AMQP
+      - '15672:15672'   # Management UI → http://localhost:15672 (guest/guest)
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', 'ping']
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+  # ── Adminer (UI para PostgreSQL) ─────────────────────────
+  adminer:
+    image: adminer:latest
+    container_name: aiops-adminer
+    restart: unless-stopped
+    ports:
+      - '8080:8080'    # → http://localhost:8080
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pg_data:
+  redis_data:
+  rabbitmq_data:
